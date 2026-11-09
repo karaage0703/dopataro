@@ -1,0 +1,1 @@
+{"name":"dopataro","version":"1.6.0","private":true,"type":"module","scripts":{"build":"node build.mjs","test":"node --test test/*.test.mjs","check":"node --check src/engine.mjs && node --check src/game.js && node --check src/art.js && node --check src/audio.js"}}
