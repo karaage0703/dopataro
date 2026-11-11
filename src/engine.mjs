@@ -1,44 +1,116 @@
+import {validAmount, compareAmounts, addAmounts, subtractAmounts, multiplyAmounts, divideAmounts, powerAmount, amountLog10, amountRatio, minAmount, maxAmount, sumAmounts, canAfford} from './numbers.mjs';
 export const MAX_STAGE=500;
 export const friends=[{name:'イヌ',job:'先制かみつき',base:25,power:8},{name:'サル',job:'分身きびだんご拳',base:500,power:180},{name:'キジ',job:'天空メテオ',base:10000,power:4400}];
-const cap=n=>Math.min(1e220,n);
-export function fresh(){return {gameOver:false,teamHP:100,cycleScale:1,retreats:0,encounterStage:0,attackClock:3,windup:0,bossSeal:false,healCooldown:0,mobHP:[],mobStage:0,waveLoot:0,completed:false,version:5,stage:1,hp:18,coins:0,total:0,kills:0,sword:0,allies:[0,0,0],souls:0,rebirths:0,best:1};}
+export function fresh(){return {gameOver:false,teamHP:100,cycleScale:1,retreats:0,encounterStage:0,attackClock:3,windup:0,bossSeal:false,healCooldown:0,mobHP:[],mobStage:0,waveLoot:0,completed:false,version:6,stage:1,hp:18,coins:0,total:0,kills:0,sword:0,allies:[0,0,0],souls:0,rebirths:0,best:1};}
 export const boss=s=>s.stage%10===0;
-export const maxHP=s=>cap(18*Math.pow(1.60,s.stage-1)*(boss(s)?7:1)*s.cycleScale*(1+Math.floor(s.stage/25)*.8));
-export const multiplier=s=>1+s.souls;
-export const tapPower=s=>cap(6*Math.pow(2,s.sword)*evolution(s.sword)*multiplier(s));
-export const allyPower=(s,i)=>cap(tapPower(s)*[.12,.16,.22][i]+friends[i].power*(s.allies[i]>0?Math.pow(2,s.allies[i]-1)*evolution(s.allies[i])*multiplier(s):0));
-export const dps=s=>cap(friends.reduce((n,_,i)=>n+allyPower(s,i),0));
-export const swordCost=s=>cap(12*Math.pow(2.05,s.sword)*evolution(s.sword));
-export const allyCost=(s,i)=>cap(friends[i].base*Math.pow(2.08,s.allies[i])*evolution(s.allies[i]));
-export const reward=s=>cap(10*Math.pow(1.65,s.stage-1)*(boss(s)?8:1)*s.cycleScale);
+export function maxHP(s) {
+  const base = 18 * Math.pow(1.60, s.stage - 1) * (boss(s) ? 7 : 1) * (1 + Math.floor(s.stage / 25) * .8);
+  return multiplyAmounts(base, s.cycleScale);
+}
+export const multiplier = s => addAmounts(1, s.souls);
+export function tapPower(s) {
+  return multiplyAmounts(multiplyAmounts(6, powerAmount(2, s.sword)), multiplyAmounts(evolution(s.sword), multiplier(s)));
+}
+export function allyPower(s, i) {
+  const support = multiplyAmounts(tapPower(s), [.12, .16, .22][i]);
+  if (s.allies[i] === 0) return support;
+  const trained = multiplyAmounts(friends[i].power, powerAmount(2, s.allies[i] - 1));
+  return addAmounts(support, multiplyAmounts(trained, multiplyAmounts(evolution(s.allies[i]), multiplier(s))));
+}
+export const dps = s => sumAmounts(friends.map((_, i) => allyPower(s, i)));
+export const swordCost = s => multiplyAmounts(multiplyAmounts(12, powerAmount(2.05, s.sword)), evolution(s.sword));
+export const allyCost = (s, i) => multiplyAmounts(multiplyAmounts(friends[i].base, powerAmount(2.08, s.allies[i])), evolution(s.allies[i]));
+export const reward = s => multiplyAmounts(10 * Math.pow(1.65, s.stage - 1) * (boss(s) ? 8 : 1), s.cycleScale);
 export const BURST_POWER=1e8;
 export const BURST_LOOT=1e4;
 export const enemyCount=s=>boss(s)?7:Math.min(8,3+Math.floor((s.stage-1)/20));
 export const enemyWeight=(s,i)=>boss(s)&&i===0?4:1+(i%3)*.18;
-export function mobMaxHP(s,i){let weight=0;for(let j=0;j<enemyCount(s);j++)weight+=enemyWeight(s,j);return maxHP(s)*enemyWeight(s,i)/weight;}
-export function ensureSwarm(s){const sum=s.mobHP?.reduce((a,b)=>a+b,0)||0;if(s.mobStage!==s.stage||s.mobHP?.length!==enemyCount(s)||Math.abs(sum-s.hp)>Math.max(1e-8,s.hp*1e-10)){
- s.mobHP=Array.from({length:enemyCount(s)},(_,i)=>mobMaxHP(s,i)*Math.min(1,s.hp/maxHP(s)));s.mobStage=s.stage;s.waveLoot=0;
-}return s.mobHP;}
-export function damage(s,n,lootBoost=1){
- if(s.completed||s.gameOver||!Number.isFinite(n)||n<=0)return null;
- ensureSwarm(s);if(s.bossSeal&&s.encounterStage===s.stage)n=Math.min(n,Math.max(0,s.hp-maxHP(s)*.4));const boost=Number.isFinite(lootBoost)?Math.max(1,Math.min(BURST_LOOT,lootBoost)):1;
- let left=n;const wasAlive=s.mobHP.map(h=>h>0);
- for(let pass=0;pass<enemyCount(s)&&left>0;pass++){
-  const live=s.mobHP.map((h,i)=>h>0?i:-1).filter(i=>i>=0);if(!live.length)break;
-  const share=left/live.length;let spent=0;
-  for(const i of live){const hit=Math.min(s.mobHP[i],share);s.mobHP[i]-=hit;spent+=hit;if(s.mobHP[i]<mobMaxHP(s,i)*1e-12)s.mobHP[i]=0;}
-  if(spent<=0)break;left=Math.max(0,left-spent);
- }
- let loot=0;for(let i=0;i<s.mobHP.length;i++)if(wasAlive[i]&&s.mobHP[i]===0){s.kills++;loot+=reward(s)/enemyCount(s)*boost;}
- s.coins=cap(s.coins+loot);s.total=cap(s.total+loot);s.waveLoot=cap(s.waveLoot+loot);s.hp=s.mobHP.reduce((a,b)=>a+b,0);
- if(s.hp>0)return null;
- const waveLoot=s.waveLoot,wasBoss=boss(s),cleared=s.stage,won=cleared===MAX_STAGE;s.completed=won;
- if(!won)s.stage++;s.best=Math.max(s.best,s.stage);s.hp=maxHP(s);s.mobHP=[];s.mobStage=0;s.waveLoot=0;
- return {loot:waveLoot,boss:wasBoss,cleared,won};
+export function mobMaxHP(s, i) {
+  let weight = 0;
+  for (let j = 0; j < enemyCount(s); j++) weight += enemyWeight(s, j);
+  return multiplyAmounts(maxHP(s), enemyWeight(s, i) / weight);
 }
-export function buy(s,type,index=0){if(s.gameOver)return false;const cost=type==='sword'?swordCost(s):allyCost(s,index);if(s.coins<cost)return false;s.coins-=cost;if(type==='sword')s.sword++;else s.allies[index]++;return true;}
+export function ensureSwarm(s) {
+  const sum = sumAmounts(s.mobHP || []);
+  const sameHP = compareAmounts(sum, s.hp) === 0 || Math.abs(amountRatio(sum, s.hp || 1) - 1) < 1e-10;
+  if (s.mobStage !== s.stage || s.mobHP?.length !== enemyCount(s) || !sameHP) {
+    const remaining = Math.min(1, amountRatio(s.hp, maxHP(s)));
+    s.mobHP = Array.from({length:enemyCount(s)}, (_, i) => multiplyAmounts(mobMaxHP(s, i), remaining));
+    s.mobStage = s.stage;
+    s.waveLoot = 0;
+  }
+  return s.mobHP;
+}
+export function damage(s, amount, lootBoost = 1) {
+  if (s.completed || s.gameOver || !validAmount(amount) || compareAmounts(amount, 0) <= 0) return null;
+  ensureSwarm(s);
+  if (s.bossSeal && s.encounterStage === s.stage) {
+    amount = minAmount(amount, subtractAmounts(s.hp, multiplyAmounts(maxHP(s), .4)));
+  }
+  const boost = Number.isFinite(lootBoost) ? Math.max(1, Math.min(BURST_LOOT, lootBoost)) : 1;
+  let left = amount;
+  const wasAlive = s.mobHP.map(hp => compareAmounts(hp, 0) > 0);
+  for (let pass = 0; pass < enemyCount(s) && compareAmounts(left, 0) > 0; pass++) {
+    const live = s.mobHP.map((hp, i) => compareAmounts(hp, 0) > 0 ? i : -1).filter(i => i >= 0);
+    if (!live.length) break;
+    const share = divideAmounts(left, live.length);
+    let spent = 0;
+    for (const i of live) {
+      const hit = minAmount(s.mobHP[i], share);
+      s.mobHP[i] = subtractAmounts(s.mobHP[i], hit);
+      spent = addAmounts(spent, hit);
+      if (amountRatio(s.mobHP[i], mobMaxHP(s, i)) < 1e-12) s.mobHP[i] = 0;
+    }
+    if (compareAmounts(spent, 0) <= 0) break;
+    left = subtractAmounts(left, spent);
+  }
+  let defeated = 0;
+  for (let i = 0; i < s.mobHP.length; i++) {
+    if (wasAlive[i] && s.mobHP[i] === 0) { s.kills++; defeated++; }
+  }
+  const loot = multiplyAmounts(reward(s), defeated / enemyCount(s) * boost);
+  s.coins = addAmounts(s.coins, loot);
+  s.total = addAmounts(s.total, loot);
+  s.waveLoot = addAmounts(s.waveLoot, loot);
+  s.hp = sumAmounts(s.mobHP);
+  if (compareAmounts(s.hp, 0) > 0) return null;
+  const waveLoot = s.waveLoot, wasBoss = boss(s), cleared = s.stage, won = cleared === MAX_STAGE;
+  s.completed = won;
+  if (!won) s.stage++;
+  s.best = Math.max(s.best, s.stage);
+  s.hp = maxHP(s);
+  s.mobHP = [];
+  s.mobStage = 0;
+  s.waveLoot = 0;
+  return {loot:waveLoot, boss:wasBoss, cleared, won};
+}
+export function buy(s, type, index = 0) {
+  if (s.gameOver || !['sword', 'ally'].includes(type)) return false;
+  if (type === 'ally' && (!Number.isInteger(index) || index < 0 || index >= friends.length)) return false;
+  const level = type === 'sword' ? s.sword : s.allies[index];
+  if (!Number.isSafeInteger(level + 1)) return false;
+  const cost = type === 'sword' ? swordCost(s) : allyCost(s, index);
+  if (!canAfford(s.coins, cost)) return false;
+  s.coins = subtractAmounts(s.coins, cost);
+  if (type === 'sword') s.sword++;
+  else s.allies[index]++;
+  return true;
+}
 export const soulGain=s=>s.stage>=30?Math.floor(Math.pow(s.stage/10,1.7)):0;
-export function rebirth(s){if(s.gameOver)return false;const gain=soulGain(s);if(!gain)return false;const scale=Math.min(1e218,Math.max(1,tapPower(s)/18));const keep={sword:s.sword,allies:s.allies.slice(),coins:s.coins,total:s.total,kills:s.kills,best:s.best,souls:s.souls+gain,rebirths:s.rebirths+1,retreats:s.retreats,cycleScale:scale};Object.assign(s,fresh(),keep);s.hp=maxHP(s);return true;}
+export function rebirth(s) {
+  if (s.gameOver) return false;
+  const gain = soulGain(s);
+  if (!gain) return false;
+  const scale = maxAmount(1, divideAmounts(tapPower(s), 18));
+  const keep = {
+    sword:s.sword, allies:s.allies.slice(), coins:s.coins, total:s.total,
+    kills:s.kills, best:s.best, souls:s.souls + gain,
+    rebirths:s.rebirths + 1, retreats:s.retreats, cycleScale:scale
+  };
+  Object.assign(s, fresh(), keep);
+  s.hp = maxHP(s);
+  return true;
+}
 export const threatTier=s=>Math.min(3,Math.floor(s.stage/50));
 export const attackDelay=s=>boss(s)?2.4:Math.max(2.5,4.5-threatTier(s)*.5);
 export function prepareCombat(s){if(s.encounterStage!==s.stage){s.encounterStage=s.stage;s.attackClock=boss(s)?.6:attackDelay(s);s.windup=0;s.bossSeal=boss(s);}}
@@ -48,15 +120,62 @@ export function tickCombat(s,dt){if(s.completed||s.gameOver)return null;prepareC
 }
 export function parry(s){if(s.gameOver||s.windup<=0||s.windup>.55)return false;s.windup=0;s.attackClock=attackDelay(s);s.bossSeal=false;s.teamHP=Math.min(100,s.teamHP+8);return true;}
 export function heal(s){if(s.gameOver||s.healCooldown>0||s.teamHP>=100)return false;s.teamHP=Math.min(100,s.teamHP+35);s.healCooldown=20;return true;}
-export function restore(raw){try{const o=JSON.parse(raw);if(!o||![1,2,3,4,5].includes(o.version))return fresh();const s=fresh();for(const k of ['stage','coins','total','kills','sword','souls','rebirths','best'])if(Number.isFinite(o[k])&&o[k]>=0)s[k]=Math.min(o[k],1e220);s.stage=Math.max(1,Math.min(MAX_STAGE,Math.floor(s.stage)));s.sword=Math.min(700,Math.floor(s.sword));s.allies=[0,1,2].map(i=>Math.max(0,Math.min(700,Math.floor(Number.isFinite(o.allies?.[i])?o.allies[i]:0))));s.completed=o.completed===true&&s.stage===MAX_STAGE;if(o.version>=4){s.cycleScale=Number.isFinite(o.cycleScale)&&o.cycleScale>=1?Math.min(1e218,o.cycleScale):1;s.teamHP=Number.isFinite(o.teamHP)?Math.max(0,Math.min(100,o.teamHP)):100;s.retreats=Number.isFinite(o.retreats)?Math.max(0,o.retreats):0;s.healCooldown=Number.isFinite(o.healCooldown)?Math.max(0,Math.min(20,o.healCooldown)):0;}const oldMax=18*Math.pow(1.30,s.stage-1)*(boss(s)?7:1);const prevMax=o.version===1?oldMax:18*Math.pow(1.60,s.stage-1)*(boss(s)?7:1);const savedHP=o.version<4?o.hp/prevMax*maxHP(s):o.hp;s.hp=Number.isFinite(savedHP)&&savedHP>0?Math.min(savedHP,maxHP(s)):maxHP(s);if(o.version>=4&&o.mobStage===s.stage&&Array.isArray(o.mobHP)&&o.mobHP.length===enemyCount(s)&&o.mobHP.every((n,i)=>Number.isFinite(n)&&n>=0&&n<=mobMaxHP(s,i))){const sum=o.mobHP.reduce((a,b)=>a+b,0);if(sum>0){s.mobHP=o.mobHP.slice();s.hp=sum;s.mobStage=s.stage;s.waveLoot=Number.isFinite(o.waveLoot)&&o.waveLoot>=0?cap(o.waveLoot):0;}}s.gameOver=(o.version>=5&&o.gameOver===true)||s.teamHP<=0;if(s.gameOver){s.teamHP=0;s.completed=false;}return s;}catch{return fresh();}}
+export function restore(raw) {
+  try {
+    const saved = JSON.parse(raw);
+    if (!saved || ![1,2,3,4,5,6].includes(saved.version)) return fresh();
+    const s = fresh();
+    for (const key of ['stage','kills','sword','souls','rebirths','best']) {
+      if (Number.isFinite(saved[key]) && saved[key] >= 0) s[key] = saved[key];
+    }
+    s.stage = Math.max(1, Math.min(MAX_STAGE, Math.floor(s.stage)));
+    s.sword = Number.isSafeInteger(Math.floor(s.sword)) ? Math.floor(s.sword) : 0;
+    s.allies = [0,1,2].map(i => Number.isSafeInteger(Math.floor(saved.allies?.[i])) && saved.allies[i] >= 0 ? Math.floor(saved.allies[i]) : 0);
+    for (const key of ['coins','total']) if (validAmount(saved[key])) s[key] = saved[key];
+    s.completed = saved.completed === true && s.stage === MAX_STAGE;
+    if (saved.version >= 4) {
+      if (validAmount(saved.cycleScale) && compareAmounts(saved.cycleScale, 1) >= 0) s.cycleScale = saved.cycleScale;
+      s.teamHP = Number.isFinite(saved.teamHP) ? Math.max(0, Math.min(100, saved.teamHP)) : 100;
+      s.retreats = Number.isFinite(saved.retreats) ? Math.max(0, saved.retreats) : 0;
+      s.healCooldown = Number.isFinite(saved.healCooldown) ? Math.max(0, Math.min(20, saved.healCooldown)) : 0;
+    }
+    // Legacy saturated saves keep their current enemy difficulty, then grow normally.
+    if (saved.version < 6 && compareAmounts(maxHP(s), 1e220) > 0) {
+      s.cycleScale = multiplyAmounts(s.cycleScale, divideAmounts(1e220, maxHP(s)));
+    }
+    const oldMax = 18 * Math.pow(saved.version === 1 ? 1.30 : 1.60, s.stage - 1) * (boss(s) ? 7 : 1);
+    const savedHP = saved.version < 4 && Number.isFinite(saved.hp)
+      ? multiplyAmounts(maxHP(s), saved.hp / oldMax) : saved.hp;
+    s.hp = validAmount(savedHP) && compareAmounts(savedHP, 0) > 0 ? minAmount(savedHP, maxHP(s)) : maxHP(s);
+    if (saved.version >= 4 && saved.mobStage === s.stage && Array.isArray(saved.mobHP)
+      && saved.mobHP.length === enemyCount(s)
+      && saved.mobHP.every((hp, i) => validAmount(hp) && compareAmounts(hp, mobMaxHP(s, i)) <= 0)) {
+      const sum = sumAmounts(saved.mobHP);
+      if (compareAmounts(sum, 0) > 0) {
+        s.mobHP = saved.mobHP.slice(); s.hp = sum; s.mobStage = s.stage;
+        s.waveLoot = validAmount(saved.waveLoot) ? saved.waveLoot : 0;
+      }
+    }
+    s.gameOver = (saved.version >= 5 && saved.gameOver === true) || s.teamHP <= 0;
+    if (s.gameOver) { s.teamHP = 0; s.completed = false; }
+    return s;
+  } catch { return fresh(); }
+}
 export const units=['','万','億','兆','京','垓','秭','穣','溝','澗','正','載','極','恒河沙','阿僧祇','那由他','不可思議','無量大数','超無量','極無量','桃源','鬼神','天元','宇宙','多元','全知','終極'];
-export const unitRank=n=>n<1e4?0:Math.floor(Math.log10(n)/4);
+export const unitRank=n=>compareAmounts(n,1e4)<0?0:Math.floor(amountLog10(n)/4);
 export const unitLabel=rank=>units[rank]||(rank===0?'一':'終極'+(rank-units.length+2)+'乗');
-export function fmt(n){if(!Number.isFinite(n)||n<0)return '0';if(n<1e4)return Math.floor(n).toLocaleString('ja-JP');let i=unitRank(n),v=Number((n/10**(i*4)).toFixed(1));if(v>=10000){i++;v=1;}return v.toFixed(1)+unitLabel(i);}
+export function fmt(value) {
+  if (!validAmount(value)) return '0';
+  if (compareAmounts(value, 1e4) < 0) return Math.floor(value).toLocaleString('ja-JP');
+  let rank = unitRank(value);
+  let scaled = Number(amountRatio(value, powerAmount(10, rank * 4)).toFixed(1));
+  if (scaled >= 10000) { rank++; scaled = 1; }
+  return scaled.toFixed(1) + unitLabel(rank);
+}
 export const weaponNames=['桃の木刀','桃鉄・鬼斬丸','雷神・桃一閃','獄炎・鬼滅丸','星砕きの桃剣','銀河断ち','次元裂き・桃源','因果逆転の太刀','不可思議の神剣','無量大数・桃皇剣','宇宙創生・太郎','終極・桃源開闢'];
 export const weaponTier=s=>Math.floor(s.sword/5);
 export const weaponName=s=>weaponNames[Math.min(weaponNames.length-1,weaponTier(s))]+(weaponTier(s)>=weaponNames.length?' 第'+(weaponTier(s)-weaponNames.length+2)+'解放':'');
-export const evolution=level=>Math.pow(10,Math.floor(level/5));
+export const evolution=level=>powerAmount(10,Math.floor(level/5));
 export const oniScale=s=>Math.min(2.05,.72+Math.log10(s.stage)*.48+(boss(s)?.20:0));
 
 export const allyRank=(s,i)=>Math.min(3,Math.floor(s.allies[i]/5));
