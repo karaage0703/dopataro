@@ -9,6 +9,7 @@
 
 <dialog id="audio-dialog"><h2>音を鳴らす</h2><button id="start-audio">音を開始・テストする</button><p id="audio-status" role="status">押すとBGMと確認音を再生します。</p><label for="native-audio">鳴らない場合はこちらの ▶ でも試せます</label><audio id="native-audio" controls preload="none" playsinline></audio><p>まだ無音なら、端末のメディア音量・消音設定を確認。Discord内で開いている場合は同じURLをSafari / Chromeで開いて比較してください。</p><button id="close-audio">ゲームに戻る</button></dialog><dialog id="new-game-dialog"><h2>最初から遊ぶ？</h2><p>今のセーブを1件だけ退避して、第1波・刀Lv0・仲間Lv0・小判0・桃の魂0から始めます。音の設定はそのままです。</p><p id="restart-error" role="alert"></p><button id="confirm-new-game">退避して最初から始める</button><button id="cancel-new-game" autofocus>やめる</button><div class="backup-choice"><p id="backup-summary"></p><button id="restore-backup" disabled>前のセーブに戻す</button><small>復元時は今の進行を退避し、セーブを入れ替えます。退避できるのは最新1件です。</small></div></dialog><dialog id="game-over-dialog" aria-labelledby="game-over-title"><span class="game-over-kicker">一行、力尽きる。</span><h2 id="game-over-title" tabindex="-1" autofocus>GAME OVER<span>ゲームオーバー</span></h2><p class="game-over-life">共有ライフ 0 / 100</p><p id="game-over-summary"></p><p class="game-over-rule">このプレイの育成は引き継ぎません。<br>刀・仲間レベル・小判・桃の魂は0に戻り、<br><b>第1波からのやり直しです。</b></p><button id="restart-after-over">最初からやり直す</button></dialog><noscript>このゲームはJavaScriptを有効にすると遊べます。</noscript>
 <script>
+// NUMBERS
 // ENGINE
 // AUDIO
 // ART
